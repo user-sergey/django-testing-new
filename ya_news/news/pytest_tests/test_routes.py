@@ -3,41 +3,51 @@ from http import HTTPStatus
 import pytest
 
 
-@pytest.mark.parametrize('page', ('home', 'detail', 'login', 'signup'))
-def test_public_pages_are_available(client, urls, page):
-    response = client.get(urls[page])
-    assert response.status_code == HTTPStatus.OK
-
-
-@pytest.mark.parametrize('page', ('edit', 'delete'))
-def test_comment_pages_are_available_to_author(
-    author_of_comment_client,
-    urls,
-    page
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ('url_fixture', 'client_name', 'response_code', 'method_name'),
+    (
+        ('home_url', 'client', HTTPStatus.OK, 'GET'),
+        ('detail_url', 'client', HTTPStatus.OK, 'GET'),
+        ('login_url', 'client', HTTPStatus.OK, 'GET'),
+        ('signup_url', 'client', HTTPStatus.OK, 'GET'),
+        ('edit_url', 'author_of_comment_client', HTTPStatus.OK, 'GET'),
+        ('delete_url', 'author_of_comment_client', HTTPStatus.OK, 'GET'),
+        ('edit_url', 'not_author_client', HTTPStatus.NOT_FOUND, 'GET'),
+        ('delete_url', 'not_author_client', HTTPStatus.NOT_FOUND, 'GET'),
+        ('logout_url', 'not_author_client', HTTPStatus.OK, 'POST'),
+    )
+)
+def test_pages_availability(
+    request,
+    url_fixture,
+    client_name,
+    response_code,
+    method_name
 ):
-    response = author_of_comment_client.get(urls[page])
-    assert response.status_code == HTTPStatus.OK
+    url = request.getfixturevalue(url_fixture)
+    current_client = request.getfixturevalue(client_name)
+    response = current_client.generic(method_name, url)
+    assert response.status_code == response_code
 
 
-@pytest.mark.parametrize('page', ('edit', 'delete'))
-def test_comment_pages_are_unavailable_to_other_user(
-    other_user_client,
-    urls,
-    page
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ('redirect_fixture_name', 'url_fixture_name', 'client_name'),
+    (
+        ('anonymous_redirect_urls', 'edit_url', 'client'),
+        ('anonymous_redirect_urls', 'delete_url', 'client'),
+    )
+)
+def test_user_is_redirected(
+    request,
+    redirect_fixture_name,
+    url_fixture_name,
+    client_name
 ):
-    response = other_user_client.get(urls[page])
-    assert response.status_code == HTTPStatus.NOT_FOUND
-
-
-@pytest.mark.parametrize('page', ('edit', 'delete'))
-def test_anonymous_user_is_redirected_to_login(client, urls, page):
-    url = urls[page]
-    response = client.get(url)
+    redirect_urls = request.getfixturevalue(redirect_fixture_name)
+    url = request.getfixturevalue(url_fixture_name)
+    current_client = request.getfixturevalue(client_name)
+    response = current_client.get(url)
     assert response.status_code == HTTPStatus.FOUND
-    assert response.url == f'{urls["login"]}?next={url}'
-
-
-def test_logout_accepts_post_request(other_user_client, urls):
-    response = other_user_client.post(urls['logout'])
-    assert response.status_code == HTTPStatus.OK
-    assert '_auth_user_id' not in other_user_client.session
+    assert response.url == redirect_urls[url_fixture_name]

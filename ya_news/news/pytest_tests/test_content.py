@@ -1,36 +1,35 @@
-from http import HTTPStatus
+from django.conf import settings
 
 from news.forms import CommentForm
-from .constants import NEWS_ON_PAGE
+
+NEWS_ON_PAGE = settings.NEWS_COUNT_ON_HOME_PAGE
 
 
-def test_news_count_on_page_is_limited(news_set, client, urls):
-    response = client.get(urls['home'])
-    object_list = response.context['object_list']
-    assert len(object_list) == NEWS_ON_PAGE
+def test_news_count_on_page_is_limited(news_set, client, home_url):
+    response = client.get(home_url)
+    news_items = response.context['object_list']
+    assert len(news_items) == NEWS_ON_PAGE
 
 
-def test_news_are_sorted_newest_first(news_set, client, urls):
-    response = client.get(urls['home'])
-    object_list = list(response.context['object_list'])
-    expected_news_set = list(reversed(news_set))[:NEWS_ON_PAGE]
-    assert object_list == expected_news_set
+def test_news_are_sorted_newest_first(news_set, client, home_url):
+    response = client.get(home_url)
+    news_items = list(response.context['object_list'])
+    all_dates = [news.date for news in news_items]
+    assert all_dates == sorted(all_dates, reverse=True)
 
 
-def test_comments_are_sorted_oldest_first(comments, client, urls):
-    response = client.get(urls['detail'])
-    object_list = list(response.context['news'].comment_set.all())
-    dates_of_comments = [comment.created for comment in object_list]
-    assert dates_of_comments == sorted(dates_of_comments)
+def test_comments_are_sorted_oldest_first(comments, client, detail_url):
+    response = client.get(detail_url)
+    comment_items = list(response.context['news'].comment_set.all())
+    comment_timestamps = [comment.created for comment in comment_items]
+    assert comment_timestamps == sorted(comment_timestamps)
 
 
-def test_anonymous_user_has_no_comment_form(client, urls):
-    response = client.get(urls['detail'])
-    assert response.status_code == HTTPStatus.OK
+def test_anonymous_user_has_no_comment_form(client, detail_url):
+    response = client.get(detail_url)
     assert 'form' not in response.context
 
 
-def test_authorized_user_has_comment_form(other_user_client, urls):
-    response = other_user_client.get(urls['detail'])
-    assert response.status_code == HTTPStatus.OK
-    assert isinstance(response.context['form'], CommentForm)
+def test_authorized_user_has_comment_form(not_author_client, detail_url):
+    response = not_author_client.get(detail_url)
+    assert isinstance(response.context.get('form'), CommentForm)

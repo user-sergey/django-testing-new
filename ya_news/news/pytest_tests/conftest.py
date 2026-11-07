@@ -1,12 +1,12 @@
 from datetime import timedelta
 
 import pytest
+from django.conf import settings
 from django.test import Client
 from django.urls import reverse
 from django.utils import timezone
 
 from news.models import Comment, News
-from .constants import NEWS_ON_PAGE
 
 
 @pytest.fixture
@@ -15,8 +15,8 @@ def author_of_comment(django_user_model, db):
 
 
 @pytest.fixture
-def other_user(django_user_model, db):
-    return django_user_model.objects.create(username='Другой пользователь')
+def not_author(django_user_model, db):
+    return django_user_model.objects.create(username='Не-автор')
 
 
 @pytest.fixture
@@ -27,9 +27,9 @@ def author_of_comment_client(author_of_comment, db):
 
 
 @pytest.fixture
-def other_user_client(other_user, db):
+def not_author_client(not_author, db):
     client = Client()
-    client.force_login(other_user)
+    client.force_login(not_author)
     return client
 
 
@@ -52,41 +52,78 @@ def comment(news, author_of_comment, db):
 
 @pytest.fixture
 def news_set(db):
-    return News.objects.bulk_create(
+    News.objects.bulk_create(
         [
             News(
                 title=f'Новость №{index + 1}',
                 text=f'Содержание тестовой новости №{index + 1}',
-                date=timezone.now() + timedelta(days=index)
+                date=timezone.now() - timedelta(days=index)
             )
-            for index in range(NEWS_ON_PAGE + 1)
+            for index in range(settings.NEWS_COUNT_ON_HOME_PAGE + 1)
         ]
     )
 
 
 @pytest.fixture
 def comments(news, author_of_comment, db):
-    return Comment.objects.bulk_create(
+    created_comments = Comment.objects.bulk_create(
         [
             Comment(
                 news=news,
                 author=author_of_comment,
                 text=f'Тестовый комментарий №{index + 1}',
-                created=timezone.now() + timedelta(minutes=index),
             )
             for index in range(3)
         ]
     )
+    for index, single_comment in enumerate(created_comments):
+        single_comment.created = timezone.now() + timedelta(minutes=index)
+        single_comment.save(update_fields=['created'])
 
 
 @pytest.fixture
-def urls(news, comment):
+def home_url():
+    return reverse('news:home')
+
+
+@pytest.fixture
+def detail_url(news):
+    return reverse('news:detail', args=[news.id])
+
+
+@pytest.fixture
+def comments_url(detail_url):
+    return detail_url + '#comments'
+
+
+@pytest.fixture
+def delete_url(comment):
+    return reverse('news:delete', args=[comment.id])
+
+
+@pytest.fixture
+def edit_url(comment):
+    return reverse('news:edit', args=[comment.id])
+
+
+@pytest.fixture
+def login_url():
+    return reverse('users:login')
+
+
+@pytest.fixture
+def anonymous_redirect_urls(delete_url, edit_url, login_url):
     return {
-        'home': reverse('news:home'),
-        'detail': reverse('news:detail', args=[news.id]),
-        'delete': reverse('news:delete', args=[comment.id]),
-        'edit': reverse('news:edit', args=[comment.id]),
-        'login': reverse('users:login'),
-        'logout': reverse('users:logout'),
-        'signup': reverse('users:signup'),
+        'edit_url': f'{login_url}?next={edit_url}',
+        'delete_url': f'{login_url}?next={delete_url}'
     }
+
+
+@pytest.fixture
+def logout_url():
+    return reverse('users:logout')
+
+
+@pytest.fixture
+def signup_url():
+    return reverse('users:signup')

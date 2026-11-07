@@ -1,95 +1,95 @@
 from http import HTTPStatus
 
-import pytest
-
 from news.models import Comment
-from .constants import FORM_DATA, NEW_FORM_DATA
+
+FORM_DATA = {'text': 'Новый комментарий'}
+BAD_WORDS_FORM_DATA = {'text': 'Этот негодяй съев вся редиска!!!'}
+WARNING = 'Не ругайтесь!'
 
 
-def test_anonymous_user_cannot_create_comment(client, urls):
-    comments_before = set(Comment.objects.values_list('pk', flat=True))
-    response = client.post(urls['detail'], data=FORM_DATA)
+def test_anonymous_user_cannot_create_comment(client, detail_url):
+    response = client.post(detail_url, data=FORM_DATA)
     assert response.status_code == HTTPStatus.FOUND
-    assert set(Comment.objects.values_list('pk', flat=True)) == comments_before
+    assert Comment.objects.count() == 0
 
 
 def test_authorized_user_can_create_comment(
     news,
     author_of_comment,
     author_of_comment_client,
-    urls
+    detail_url,
+    comments_url
 ):
-    existing_ids = set(Comment.objects.values_list('pk', flat=True))
-    author_of_comment_client.post(urls['detail'], data=FORM_DATA)
-    created_comments = Comment.objects.exclude(pk__in=existing_ids)
-    assert created_comments.count() == 1
-    comment = created_comments.get()
+    response = author_of_comment_client.post(detail_url, data=FORM_DATA)
+    assert response.status_code == HTTPStatus.FOUND
+    assert response.url == comments_url
+    assert Comment.objects.count() == 1
+    comment = Comment.objects.get()
     assert comment.news == news
     assert comment.author == author_of_comment
     assert comment.text == FORM_DATA['text']
 
 
-@pytest.mark.parametrize('url_name', ('detail', 'edit', 'delete'))
-def test_author_after_action_with_comment_redirect_to_news_detail(
-    author_of_comment_client,
-    urls,
-    url_name
-):
-    url = urls[url_name]
-    response = author_of_comment_client.post(url, data=FORM_DATA)
-    assert response.status_code == HTTPStatus.FOUND
-    assert response.url == urls['detail'] + '#comments'
-
-
 def test_authorized_user_cannot_create_comment_with_stop_words(
     author_of_comment_client,
-    urls
+    detail_url
 ):
-    comments_before = set(Comment.objects.values_list('pk', flat=True))
     response = author_of_comment_client.post(
-        urls['detail'],
-        data={'text': 'Этот негодяй съев вся редиска!!!'}
+        detail_url,
+        data=BAD_WORDS_FORM_DATA
     )
     assert response.status_code == HTTPStatus.OK
-    form = response.context['form']
+    form = response.context.get('form')
     assert 'text' in form.errors
-    assert 'Не ругайтесь!' in form.errors['text']
-    assert set(Comment.objects.values_list('pk', flat=True)) == comments_before
+    assert WARNING in form.errors['text']
+    assert Comment.objects.count() == 0
 
 
 def test_author_of_comment_can_edit_comment(
-    news,
     comment,
-    author_of_comment,
     author_of_comment_client,
-    urls
+    edit_url,
+    comments_url
 ):
-    author_of_comment_client.post(urls['edit'], data=NEW_FORM_DATA)
+    response = author_of_comment_client.post(edit_url, data=FORM_DATA)
+    assert response.status_code == HTTPStatus.FOUND
+    assert response.url == comments_url
     updated_comment = Comment.objects.get(pk=comment.pk)
-    assert updated_comment.news == news
-    assert updated_comment.author == author_of_comment
-    assert updated_comment.text == NEW_FORM_DATA['text']
+    assert updated_comment.news == comment.news
+    assert updated_comment.author == comment.author
+    assert updated_comment.text == FORM_DATA['text']
 
 
 def test_author_of_comment_can_delete_comment(
     comment,
     author_of_comment_client,
-    urls
+    delete_url,
+    comments_url
 ):
-    author_of_comment_client.post(urls['delete'])
-    assert not Comment.objects.filter(pk=comment.pk).exists()
+    response = author_of_comment_client.post(delete_url)
+    assert response.status_code == HTTPStatus.FOUND
+    assert response.url == comments_url
+    assert Comment.objects.count() == 0
 
 
-def test_other_user_cannot_edit_comment(comment, other_user_client, urls):
-    response = other_user_client.post(urls['edit'], data=NEW_FORM_DATA)
-    saved_comment = Comment.objects.get(pk=comment.pk)
+def test_not_author_cannot_edit_comment(comment, not_author_client, edit_url):
+    response = not_author_client.post(edit_url, data=FORM_DATA)
     assert response.status_code == HTTPStatus.NOT_FOUND
+    saved_comment = Comment.objects.get(pk=comment.pk)
     assert saved_comment.news == comment.news
     assert saved_comment.author == comment.author
     assert saved_comment.text == comment.text
 
 
-def test_other_user_cannot_delete_comment(comment, other_user_client, urls):
-    response = other_user_client.post(urls['delete'])
+def test_not_author_cannot_delete_comment(
+    comment,
+    not_author_client,
+    delete_url
+):
+    response = not_author_client.post(delete_url)
     assert response.status_code == HTTPStatus.NOT_FOUND
     assert Comment.objects.filter(pk=comment.pk).exists()
+    comment_from_db = Comment.objects.get(pk=comment.pk)
+    assert comment_from_db.news == comment.news
+    assert comment_from_db.author == comment.author
+    assert comment_from_db.text == comment.text
