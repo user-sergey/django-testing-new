@@ -13,15 +13,16 @@ def test_news_count_on_page_is_limited(news_set, client, home_url):
 
 def test_news_are_sorted_newest_first(news_set, client, home_url):
     response = client.get(home_url)
-    news_items = list(response.context['object_list'])
-    all_dates = [news.date for news in news_items]
+    all_dates = [news.date for news in response.context['object_list']]
     assert all_dates == sorted(all_dates, reverse=True)
 
 
 def test_comments_are_sorted_oldest_first(comments, client, detail_url):
     response = client.get(detail_url)
-    comment_items = list(response.context['news'].comment_set.all())
-    comment_timestamps = [comment.created for comment in comment_items]
+    comment_timestamps = [
+        comment.created
+        for comment in response.context['news'].comment_set.all()
+    ]
     assert comment_timestamps == sorted(comment_timestamps)
 
 

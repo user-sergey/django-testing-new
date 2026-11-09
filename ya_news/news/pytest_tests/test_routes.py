@@ -1,53 +1,61 @@
 from http import HTTPStatus
 
 import pytest
+from pytest_django.asserts import assertRedirects
+
+pytestmark = pytest.mark.django_db
+
+OK = HTTPStatus.OK
+FOUND = HTTPStatus.FOUND
+NOT_FOUND = HTTPStatus.NOT_FOUND
 
 
-@pytest.mark.django_db
-@pytest.mark.parametrize(
-    ('url_fixture', 'client_name', 'response_code', 'method_name'),
-    (
-        ('home_url', 'client', HTTPStatus.OK, 'GET'),
-        ('detail_url', 'client', HTTPStatus.OK, 'GET'),
-        ('login_url', 'client', HTTPStatus.OK, 'GET'),
-        ('signup_url', 'client', HTTPStatus.OK, 'GET'),
-        ('edit_url', 'author_of_comment_client', HTTPStatus.OK, 'GET'),
-        ('delete_url', 'author_of_comment_client', HTTPStatus.OK, 'GET'),
-        ('edit_url', 'not_author_client', HTTPStatus.NOT_FOUND, 'GET'),
-        ('delete_url', 'not_author_client', HTTPStatus.NOT_FOUND, 'GET'),
-        ('logout_url', 'not_author_client', HTTPStatus.OK, 'POST'),
-    )
-)
 def test_pages_availability(
-    request,
-    url_fixture,
-    client_name,
-    response_code,
-    method_name
+    home_url,
+    detail_url,
+    login_url,
+    signup_url,
+    edit_url,
+    delete_url,
+    logout_url,
+    client,
+    author_client,
+    not_author_client,
+    subtests
 ):
-    url = request.getfixturevalue(url_fixture)
-    current_client = request.getfixturevalue(client_name)
-    response = current_client.generic(method_name, url)
-    assert response.status_code == response_code
-
-
-@pytest.mark.django_db
-@pytest.mark.parametrize(
-    ('redirect_fixture_name', 'url_fixture_name', 'client_name'),
-    (
-        ('anonymous_redirect_urls', 'edit_url', 'client'),
-        ('anonymous_redirect_urls', 'delete_url', 'client'),
+    clients = {
+        'client': client,
+        'author_client': author_client,
+        'not_author_client': not_author_client
+    }
+    cases = (
+        (home_url, 'client', OK, 'get'),
+        (detail_url, 'client', OK, 'get'),
+        (login_url, 'client', OK, 'get'),
+        (signup_url, 'client', OK, 'get'),
+        (edit_url, 'author_client', OK, 'get'),
+        (delete_url, 'author_client', OK, 'get'),
+        (edit_url, 'not_author_client', NOT_FOUND, 'get'),
+        (delete_url, 'not_author_client', NOT_FOUND, 'get'),
+        (logout_url, 'not_author_client', OK, 'post'),
     )
-)
-def test_user_is_redirected(
-    request,
-    redirect_fixture_name,
-    url_fixture_name,
-    client_name
+    for url, client_name, response_code, method_name in cases:
+        with subtests.test(msg=f'{method_name.upper()} {url} {client_name}'):
+            http_method = getattr(clients[client_name], method_name)
+            response = http_method(url)
+            assert response.status_code == response_code
+
+
+def test_anonymous_user_is_redirected(
+    edit_url,
+    delete_url,
+    edit_redirect_url,
+    delete_redirect_url,
+    client,
+    subtests
 ):
-    redirect_urls = request.getfixturevalue(redirect_fixture_name)
-    url = request.getfixturevalue(url_fixture_name)
-    current_client = request.getfixturevalue(client_name)
-    response = current_client.get(url)
-    assert response.status_code == HTTPStatus.FOUND
-    assert response.url == redirect_urls[url_fixture_name]
+    cases = ((edit_url, edit_redirect_url), (delete_url, delete_redirect_url))
+    for url, redirect_url in cases:
+        with subtests.test(msg=f'Redirect from GET {url}'):
+            response = client.get(url)
+            assertRedirects(response, redirect_url)

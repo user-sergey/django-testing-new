@@ -10,7 +10,7 @@ from news.models import Comment, News
 
 
 @pytest.fixture
-def author_of_comment(django_user_model, db):
+def author(django_user_model, db):
     return django_user_model.objects.create(username='Автор комментария')
 
 
@@ -20,9 +20,9 @@ def not_author(django_user_model, db):
 
 
 @pytest.fixture
-def author_of_comment_client(author_of_comment, db):
+def author_client(author, db):
     client = Client()
-    client.force_login(author_of_comment)
+    client.force_login(author)
     return client
 
 
@@ -42,10 +42,10 @@ def news(db):
 
 
 @pytest.fixture
-def comment(news, author_of_comment, db):
+def comment(news, author, db):
     return Comment.objects.create(
         news=news,
-        author=author_of_comment,
+        author=author,
         text='Тестовый комментарий'
     )
 
@@ -65,16 +65,14 @@ def news_set(db):
 
 
 @pytest.fixture
-def comments(news, author_of_comment, db):
+def comments(news, author, db):
     created_comments = Comment.objects.bulk_create(
-        [
-            Comment(
-                news=news,
-                author=author_of_comment,
-                text=f'Тестовый комментарий №{index + 1}',
-            )
-            for index in range(3)
-        ]
+        Comment(
+            news=news,
+            author=author,
+            text=f'Тестовый комментарий №{index + 1}',
+        )
+        for index in range(3)
     )
     for index, single_comment in enumerate(created_comments):
         single_comment.created = timezone.now() + timedelta(minutes=index)
@@ -93,12 +91,7 @@ def detail_url(news):
 
 @pytest.fixture
 def comments_url(detail_url):
-    return detail_url + '#comments'
-
-
-@pytest.fixture
-def delete_url(comment):
-    return reverse('news:delete', args=[comment.id])
+    return f'{detail_url}#comments'
 
 
 @pytest.fixture
@@ -107,16 +100,23 @@ def edit_url(comment):
 
 
 @pytest.fixture
+def delete_url(comment):
+    return reverse('news:delete', args=[comment.id])
+
+
+@pytest.fixture
 def login_url():
     return reverse('users:login')
 
 
 @pytest.fixture
-def anonymous_redirect_urls(delete_url, edit_url, login_url):
-    return {
-        'edit_url': f'{login_url}?next={edit_url}',
-        'delete_url': f'{login_url}?next={delete_url}'
-    }
+def edit_redirect_url(edit_url, login_url):
+    return f'{login_url}?next={edit_url}'
+
+
+@pytest.fixture
+def delete_redirect_url(delete_url, login_url):
+    return f'{login_url}?next={delete_url}'
 
 
 @pytest.fixture
