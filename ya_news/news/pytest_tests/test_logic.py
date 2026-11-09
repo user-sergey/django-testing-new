@@ -6,7 +6,7 @@ from news.models import Comment
 
 FORM_DATA = {'text': 'Новый комментарий'}
 STOP_WORDS = ('редиска', 'негодяй')
-BAD_WORDS_FORM_DATA = {'text': f'Проверка стоп-слова: {STOP_WORDS[0]}'}
+BAD_WORDS_DATA_LIST = [{'text': word} for word in STOP_WORDS]
 WARNING = 'Не ругайтесь!'
 
 
@@ -34,17 +34,17 @@ def test_authorized_user_can_create_comment(
 
 def test_authorized_user_cannot_create_comment_with_stop_words(
     author_client,
-    detail_url
+    detail_url,
+    subtests
 ):
-    response = author_client.post(
-        detail_url,
-        data=BAD_WORDS_FORM_DATA
-    )
-    assert response.status_code == HTTPStatus.OK
-    form = response.context.get('form')
-    assert 'text' in form.errors
-    assert WARNING in form.errors['text']
-    assert Comment.objects.count() == 0
+    for form_data in BAD_WORDS_DATA_LIST:
+        with subtests.test(word=form_data['text']):
+            response = author_client.post(detail_url, data=form_data)
+            assert response.status_code == HTTPStatus.OK
+            form = response.context.get('form')
+            assert 'text' in form.errors
+            assert WARNING in form.errors['text']
+            assert Comment.objects.count() == 0
 
 
 def test_author_can_edit_comment(

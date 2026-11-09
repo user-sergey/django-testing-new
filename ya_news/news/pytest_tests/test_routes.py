@@ -23,26 +23,22 @@ def test_pages_availability(
     not_author_client,
     subtests
 ):
-    clients = {
-        'client': client,
-        'author_client': author_client,
-        'not_author_client': not_author_client
-    }
     cases = (
-        (home_url, 'client', OK, 'get'),
-        (detail_url, 'client', OK, 'get'),
-        (login_url, 'client', OK, 'get'),
-        (signup_url, 'client', OK, 'get'),
-        (edit_url, 'author_client', OK, 'get'),
-        (delete_url, 'author_client', OK, 'get'),
-        (edit_url, 'not_author_client', NOT_FOUND, 'get'),
-        (delete_url, 'not_author_client', NOT_FOUND, 'get'),
-        (logout_url, 'not_author_client', OK, 'post'),
+        (home_url, client.get, OK),
+        (detail_url, client.get, OK),
+        (login_url, client.get, OK),
+        (signup_url, client.get, OK),
+        (edit_url, author_client.get, OK),
+        (delete_url, author_client.get, OK),
+        (edit_url, not_author_client.get, NOT_FOUND),
+        (delete_url, not_author_client.get, NOT_FOUND),
+        (logout_url, not_author_client.post, OK),
+        (edit_url, client.get, FOUND),
+        (delete_url, client.get, FOUND),
     )
-    for url, client_name, response_code, method_name in cases:
-        with subtests.test(msg=f'{method_name.upper()} {url} {client_name}'):
-            http_method = getattr(clients[client_name], method_name)
-            response = http_method(url)
+    for url, client_method, response_code in cases:
+        with subtests.test(url=url, client_method=client_method):
+            response = client_method(url)
             assert response.status_code == response_code
 
 
@@ -56,6 +52,6 @@ def test_anonymous_user_is_redirected(
 ):
     cases = ((edit_url, edit_redirect_url), (delete_url, delete_redirect_url))
     for url, redirect_url in cases:
-        with subtests.test(msg=f'Redirect from GET {url}'):
+        with subtests.test(url=url):
             response = client.get(url)
             assertRedirects(response, redirect_url)
